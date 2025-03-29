@@ -91,11 +91,49 @@ function sendMessage() {
         loadingElement.style.display = 'block';
     }
 
-    const apiKey = '你的API Key';
-    const endpoint = 'https://api.deepseek.com/chat/completions';
+    function sendMessage() {
+    const inputElement = document.getElementById('chat-input');
+    const message = inputElement.value;
+    if (!message.trim()) return;
 
+    displayMessage('user', message);
+    inputElement.value = '';
+
+    // 显示加载动画
+    const loadingElement = document.getElementById('loading');
+    if (loadingElement) {
+        loadingElement.style.display = 'block';
+    }
+
+    // 修改点1：替换API密钥和接口地址
+    const apiKey = '8df1371fec8578eca8a2df931131de23';
+    const endpoint = 'https://spark-api-open.xf-yun.com/v1/chat/completions';
+
+    // 修改点2：调整请求体参数
     const payload = {
-        model: "deepseek-chat",
+        model: "lite",  // 星火模型名称
+        messages: [
+            { role: "user", content: message }
+        ],
+        temperature: 0.7,
+        max_tokens: 500
+    };
+
+    fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            // 修改点3：使用星火要求的认证方式（根据实际文档调整）
+            'Authorization': `Bearer ${apiKey}`,
+            'X-Request-ID': Date.now().toString()  // 建议添加请求ID
+        },
+        body: JSON.stringify(payload)
+    })
+    // ... 后续代码保持不变 ...
+}
+    
+    const payload = {
+        model: "Spark Lite",
         messages: [
             { role: "system", content: "You are a helpful assistant" },
             { role: "user", content: message }
