@@ -66,8 +66,9 @@ function displayMessage(role, message) {
 // 生成 WebSocket 请求 URL（讯飞 Spark 需要动态鉴权）
 function getWebSocketUrl() {
     // 替换为你的 API_KEY 和 APP_ID
-    const API_KEY = "8df1371fec8578eca8a2df931131de23";
-    const APP_ID = "d16d8679";
+    // 前端代码（script.js）
+const API_KEY = process.env.NEXT_PUBLIC_XF_API_KEY; // 从 Vercel 环境变量读取
+const APP_ID = process.env.NEXT_PUBLIC_XF_APP_ID;
     
     // 1. 生成鉴权参数
     const host = "spark-api.xf-yun.com";
