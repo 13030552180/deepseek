@@ -1,37 +1,47 @@
-// 格式化消息文本（保持不变）
+// 格式化消息文本
 function formatMessage(text) {
     if (!text) return '';
     
+    // 处理标题和换行
     let lines = text.split('\n');
     let formattedLines = lines.map(line => {
+        // 处理标题（**文本**）
         line = line.replace(/\*\*(.*?)\*\*/g, '<span class="bold-text">$1</span>');
         return line;
     });
     
+    // 将 ### 替换为换行，并确保每个部分都是一个段落
     let processedText = formattedLines.join('\n');
     let sections = processedText
         .split('###')
         .filter(section => section.trim())
         .map(section => {
+            // 移除多余的换行和空格
             let lines = section.split('\n').filter(line => line.trim());
+            
             if (lines.length === 0) return '';
             
+            // 处理每个部分
             let result = '';
             let currentIndex = 0;
             
             while (currentIndex < lines.length) {
                 let line = lines[currentIndex].trim();
                 
+                // 如果是数字开头（如 "1.")
                 if (/^\d+\./.test(line)) {
                     result += `<p class="section-title">${line}</p>`;
                 }
+                // 如果是小标题（以破折号开头）
                 else if (line.startsWith('-')) {
                     result += `<p class="subsection"><span class="bold-text">${line.replace(/^-/, '').trim()}</span></p>`;
                 }
+                // 如果是正文（包含冒号的行）
                 else if (line.includes(':')) {
                     let [subtitle, content] = line.split(':').map(part => part.trim());
                     result += `<p><span class="subtitle">${subtitle}</span>: ${content}</p>`;
                 }
+                // 普通文本
                 else {
                     result += `<p>${line}</p>`;
                 }
@@ -43,7 +53,7 @@ function formatMessage(text) {
     return sections.join('');
 }
 
-// 显示消息（保持不变）
+// 显示消息
 function displayMessage(role, message) {
     const messagesContainer = document.getElementById('messages');
     const messageElement = document.createElement('div');
@@ -55,37 +65,18 @@ function displayMessage(role, message) {
 
     const messageContent = document.createElement('div');
     messageContent.className = 'message-content';
+    
+    // 用户消息直接显示，机器人消息需要格式化
     messageContent.innerHTML = role === 'user' ? message : formatMessage(message);
 
     messageElement.appendChild(avatar);
     messageElement.appendChild(messageContent);
     messagesContainer.appendChild(messageElement);
+    
+    // 平滑滚动到底部
     messageElement.scrollIntoView({ behavior: 'smooth' });
 }
 
-// 生成 WebSocket 请求 URL（讯飞 Spark 需要动态鉴权）
-function getWebSocketUrl() {
-    // 替换为你的 API_KEY 和 APP_ID
-    // 前端代码（script.js）
-const API_KEY = process.env.NEXT_PUBLIC_XF_API_KEY; // 从 Vercel 环境变量读取
-const APP_ID = process.env.NEXT_PUBLIC_XF_APP_ID;
-    
-    // 1. 生成鉴权参数
-    const host = "spark-api.xf-yun.com";
-    const date = new Date().toUTCString();
-    const algorithm = "hmac-sha256";
-    const headers = "host date request-line";
-    const signatureOrigin = `host: ${host}\ndate: ${date}\nGET /v1.1/chat HTTP/1.1`;
-    const signatureSha = CryptoJS.HmacSHA256(signatureOrigin, API_KEY);
-    const signature = CryptoJS.enc.Base64.stringify(signatureSha);
-    const authorizationOrigin = `api_key="${API_KEY}", algorithm="${algorithm}", headers="${headers}", signature="${signature}"`;
-    const authorization = btoa(authorizationOrigin);
-
-    // 2. 构造 WebSocket URL
-    return `wss://${host}/v1.1/chat?authorization=${authorization}&date=${encodeURIComponent(date)}&host=${host}`;
-}
-
-// 发送消息（改为使用 WebSocket 连接讯飞 Spark）
 function sendMessage() {
     const inputElement = document.getElementById('chat-input');
     const message = inputElement.value;
@@ -96,90 +87,101 @@ function sendMessage() {
 
     // 显示加载动画
     const loadingElement = document.getElementById('loading');
-    if (loadingElement) loadingElement.style.display = 'block';
+    if (loadingElement) {
+        loadingElement.style.display = 'block';
+    }
 
-    // 1. 建立 WebSocket 连接
-    const socketUrl = getWebSocketUrl();
-    const socket = new WebSocket(socketUrl);
+    const apiKey = '你的API Key';
+    const endpoint = 'https://api.deepseek.com/chat/completions';
 
-    socket.onopen = () => {
-        // 2. 发送请求数据
-        const requestData = {
-            header: {
-                app_id: "d16d8679", // 替换为你的 APP_ID
-                uid: "user123" // 用户ID（可选）
-            },
-            parameter: {
-                chat: {
-                    domain: "general", // 通用领域
-                    temperature: 0.5,  // 控制随机性 (0~1)
-                    max_tokens: 2048   // 最大生成长度
-                }
-            },
-            payload: {
-                message: {
-                    text: [
-                        { role: "user", content: message }
-                    ]
-                }
-            }
-        };
-        socket.send(JSON.stringify(requestData));
+    const payload = {
+        model: "deepseek-chat",
+        messages: [
+            { role: "system", content: "You are a helpful assistant" },
+            { role: "user", content: message }
+        ],
+        stream: false
     };
 
-    socket.onmessage = (event) => {
-        const responseData = JSON.parse(event.data);
-        if (responseData.header.code !== 0) {
-            console.error("讯飞 Spark 错误:", responseData.header.message);
-            displayMessage('bot', '出错了: ' + responseData.header.message);
-            return;
+    fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        // 隐藏加载动画
+        if (loadingElement) {
+            loadingElement.style.display = 'none';
         }
 
-        // 3. 处理流式响应（讯飞 Spark 是分段返回的）
-        let fullResponse = "";
-        const textArray = responseData.payload.choices.text;
-        for (const textItem of textArray) {
-            fullResponse += textItem.content;
-        }
-
-        // 更新消息（替换之前的加载状态）
-        const messages = document.querySelectorAll('.message.bot');
-        const lastBotMessage = messages[messages.length - 1];
-        if (lastBotMessage && lastBotMessage.querySelector('.message-content').innerHTML.includes("思考中")) {
-            lastBotMessage.querySelector('.message-content').innerHTML = formatMessage(fullResponse);
+        if (data.choices && data.choices.length > 0) {
+            displayMessage('bot', data.choices[0].message.content);
         } else {
-            displayMessage('bot', fullResponse);
+            displayMessage('bot', '出错了，请稍后再试。');
+        }
+    })
+    .catch(error => {
+        // 隐藏加载动画
+        if (loadingElement) {
+            loadingElement.style.display = 'none';
         }
 
-        // 如果状态为 2，表示回答结束
-        if (responseData.header.status === 2) {
-            socket.close();
-            if (loadingElement) loadingElement.style.display = 'none';
-        }
-    };
-
-    socket.onerror = (error) => {
-        console.error("WebSocket 错误:", error);
-        displayMessage('bot', '网络连接出错，请重试');
-        if (loadingElement) loadingElement.style.display = 'none';
-    };
+        displayMessage('bot', '出错了，请稍后再试。');
+        console.error('Error:', error);
+    });
 }
 
-// 其他功能（主题切换、下拉菜单等保持不变）
+// 添加主题切换功能
 function toggleTheme() {
     document.body.classList.toggle('dark-mode');
     const chatContainer = document.querySelector('.chat-container');
     const messages = document.querySelector('.messages');
+    
+    // 同时切换容器的深色模式
     chatContainer.classList.toggle('dark-mode');
     messages.classList.toggle('dark-mode');
-    localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+    
+    // 保存主题设置
+    const isDarkMode = document.body.classList.contains('dark-mode');
+    localStorage.setItem('darkMode', isDarkMode);
 }
 
+// 页面加载时检查主题设置
 document.addEventListener('DOMContentLoaded', () => {
     const isDarkMode = localStorage.getItem('darkMode') === 'true';
     if (isDarkMode) {
         document.body.classList.add('dark-mode');
         document.querySelector('.chat-container').classList.add('dark-mode');
         document.querySelector('.messages').classList.add('dark-mode');
+    }
+});
+
+// 添加下拉菜单功能
+function toggleDropdown(event) {
+    event.preventDefault();
+    document.getElementById('dropdownMenu').classList.toggle('show');
+}
+
+// 点击其他地方关闭下拉菜单
+window.onclick = function(event) {
+    if (!event.target.matches('.dropdown button')) {
+        const dropdowns = document.getElementsByClassName('dropdown-content');
+        for (const dropdown of dropdowns) {
+            if (dropdown.classList.contains('show')) {
+                dropdown.classList.remove('show');
+            }
+        }
+    }
+}
+
+// 添加回车发送功能
+document.getElementById('chat-input').addEventListener('keypress', function(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
     }
 });
